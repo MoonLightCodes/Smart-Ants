@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rocket Simulation</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-image: url('./hdbg.jpg'); /* Add your background image URL here */
+            background-size: cover; /* Cover the entire viewport */
+            background-position: center; /* Center the image */
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            margin: 20px;
+            text-align: center; /* Center text in the container */
+        }
+        .card {
+            background: #555; /* Dark gray background for contrast */
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5); /* Heavy shadow for levitating effect */
+            margin: 10px 0;
+            transition: box-shadow 0.3s; /* Smooth transition for shadow */
+        }
+        .card:hover {
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.7); /* Darker shadow on hover */
+        }
+        #canvas-card canvas {
+            height: 60vh; /* Set canvas height to 60% of viewport */
+            display: block;
+            margin: 0 auto; /* Center the canvas */
+            border-radius: 8px;
+            background-color: rgba(128, 128, 128, 0.5); /* Semi-transparent gray */
+        }
+        #slider-card {
+            display: flex;
+            flex-direction: row;
+            gap: 16px;
+            justify-content: center;
+            align-items: center; /* Center align items */
+        }
+        input[type="range"] {
+            width: 100px;
+            appearance: none;
+            height: 8px;
+            border-radius: 5px;
+            background: #ccc; /* Light gray for track */
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #fff; /* White thumb */
+            border: 2px solid #333; /* Dark border for thumb */
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background 0.3s; /* Smooth transition for thumb */
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #f0f0f0; /* Lighter thumb on hover */
+        }
+        label {
+            font-size: 14px;
+            margin-top: 8px;
+            text-align: center; /* Center align text */
+            color: #fff; /* White text for labels */
+        }
+        @media (max-width: 600px) {
+            #slider-card {
+                flex-direction: column;
+                align-items: center;
+            }
+            input[type="range"] {
+                width: 80%; /* Adjust width for mobile */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="canvas-card" class="card">
+            <canvas id="simulation-canvas"></canvas>
+        </div>
+        <div id="slider-card" class="card">
+            <label for="xtime">Fast Forward</label>
+            <input type="range" id="xtime" min="1" max="50" step="1" value="1" />
+            <label for="popCount">Population Size</label>
+            <input type="range" id="popCount" min="1" max="50" step="1" value="10" />
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("simulation-canvas");
+        const ctx = canvas.getContext("2d");
+        const xtime = document.getElementById("xtime");
+        const popCount = document.getElementById("popCount");
+
+        // Set canvas size to match the canvas card
+        canvas.width = document.getElementById("canvas-card").clientWidth;
+        canvas.height = document.getElementById("canvas-card").clientHeight;
+
+        let lifeSpan = 400; // Increased lifespan
+        let count = 0;
+        let maxStrength = 0;
+        let target = { x: canvas.width - 40, y: 120, hue: 0 };
+        let home = { x: canvas.width / 2, y: canvas.height }; // Start at bottom middle
+        let population = [];
+        let fastForward = xtime.value;
+
+        class Dna {
+            constructor(genes) {
+                this.genes =
+                    genes || Array.from({ length: lifeSpan }, () => randomVector(0.1));
+            }
+            mate(partner) {
+                const mid = Math.floor(Math.random() * lifeSpan);
+                const newGenes = this.genes
+                    .slice(0, mid)
+                    .concat(partner.genes.slice(mid));
+                return new Dna(newGenes);
+            }
+            mutate() {
+                this.genes = this.genes.map((g) =>
+                    Math.random() < 0.01 ? randomVector(0.1) : g
+                );
+            }
+        }
+
+        class Rocket {
+            constructor(dna) {
+                this.pos = { x: home.x, y: home.y };
+                this.vel = { x: 0, y: 0 };
+                this.acc = { x: 0, y: 0 };
+                this.dna = dna || new Dna();
+                this.completed = false;
+                this.fitness = 0;
+                this.path = []; // Array to store path positions
+            }
+            applyForce(force) {
+                this.acc.x += force.x;
+                this.acc.y += force.y;
+            }
+            calculateFitness() {
+                const distToTarget = distance(this.pos, target);
+                const maxDist = distance(home, target);
+                this.fitness = map(distToTarget, 0, maxDist, maxDist, 0);
+                if (this.completed) this.fitness *= 10;
+                maxStrength = Math.max(maxStrength, this.fitness);
+            }
+            update() {
+                const d = distance(this.pos, target);
+                if (d < 20) {
+                    this.completed = true;
+                    this.pos = { ...target };
+                }
+                if (!this.completed) {
+                    this.path.push({ ...this.pos }); // Store current position
+                    this.applyForce(this.dna.genes[count]);
+                    this.vel.x += this.acc.x;
+                    this.vel.y += this.acc.y;
+                    this.pos.x += this.vel.x;
+                    this.pos.y += this.vel.y;
+                    this.acc = { x: 0, y: 0 };
+                }
+            }
+            draw() {
+                // Draw the path points
+                for (const point of this.path) {
+                    ctx.fillStyle = 'rgba(255, 215, 0, 0.1)'; // Gold color for path points
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 1.5, 0, Math.PI * 2); // Draw a small circle
+                    ctx.fill();
+                }
+
+                if (!this.completed) { // Only draw if not completed
+                    ctx.save();
+                    ctx.translate(this.pos.x, this.pos.y);
+                    ctx.rotate(Math.atan2(this.vel.y, this.vel.x));
+                    const brightness = map(this.fitness, 0, maxStrength, 0.1, 1); // Map fitness to brightness
+                    ctx.fillStyle = `rgba(0, 0, 0,0.8)`; // Black rocket with brightness
+
+                    // Draw small equilateral triangle for rocket body
+                    ctx.beginPath();
+                    ctx.moveTo(-5, -3);
+                    ctx.lineTo(10, 0);
+                    ctx.lineTo(-5, 3);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+            }
+        }
+
+        function initializePopulation() {
+            maxStrength = 0;
+            population = Array.from({ length: popCount.value }, () => new Rocket());
+        }
+
+        function evolvePopulation() {
+            const matingPool = [];
+            for (const rocket of population) {
+                rocket.calculateFitness();
+                const n = Math.floor(rocket.fitness * 100);
+                for (let j = 0; j < n; j++) matingPool.push(rocket);
+            }
+            population = population.map(() => {
+                const parentA = random(matingPool).dna;
+                const parentB = random(matingPool).dna;
+                const childDNA = parentA.mate(parentB);
+                childDNA.mutate();
+                return new Rocket(childDNA);
+            });
+        }
+
+        function drawTarget() {
+            ctx.save();
+            ctx.translate(target.x, target.y);
+            ctx.rotate((count / 20) % (2 * Math.PI));
+            ctx.fillStyle = `hsl(${target.hue}, 100%, 50%)`;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = i * (Math.PI / 3);
+                ctx.lineTo(15 * Math.cos(angle), 15 * Math.sin(angle));
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            target.hue = (target.hue + 1) % 360;
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawTarget();
+            for (let i = 0; i < fastForward; i++) {
+                for (const rocket of population) {
+                    rocket.update();
+                }
+                count++;
+                if (count >= lifeSpan) {
+                    evolvePopulation();
+                    count = 0;
+                }
+            }
+            for (const rocket of population) {
+                rocket.draw();
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function setup() {
+            initializePopulation();
+            animate();
+
+            // Canvas click
+            canvas.addEventListener("click", (event) => {
+                const rect = canvas.getBoundingClientRect();
+                target.x = event.clientX - rect.left; // Adjust x position
+                target.y = event.clientY - rect.top;  // Adjust y position
+            });
+
+            // Update fast forward and population size based on slider values
+            xtime.addEventListener("input", () => {
+                fastForward = xtime.value;
+            });
+
+            popCount.addEventListener("input", initializePopulation);
+        }
+
+        // Utility functions
+        function randomVector(scale) {
+            return {
+                x: Math.random() * scale - scale / 2,
+                y: Math.random() * scale - scale / 2,
+            };
+        }
+
+        function distance(p1, p2) {
+            return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        }
+
+        function random(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        function map(value, inMin, inMax, outMin, outMax) {
+            return ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
+        }
+
+        setup();
+    </script>
+</body>
+</html>
